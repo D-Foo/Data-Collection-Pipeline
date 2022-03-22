@@ -5,6 +5,8 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 import time
 import string
+from mtg_card_data import MTGCardData
+import random
 
 class Scraper:
 
@@ -24,15 +26,17 @@ class Scraper:
         self.driver = webdriver.Firefox()
         self.delay = 10
 
+        #Data 
+        data = []
+
         self.startup()
-        pass
+        
     
     def startup(self):
         if(self.debug):
             print("Startup")
         self.driver.get(self.url_base)
         time.sleep(2) # Wait a couple of seconds, so the website doesn't suspect we're a bot
-
 
     def handle_cookies(self, url):
         if(self.debug):
@@ -70,13 +74,14 @@ class Scraper:
             name = name.replace(' ', '-')  #Replace any spaces with hyphens
             self.formatted_card_list.append(name)
         
-
     def scrape(self, url):
         self.driver.get(url)
-        time.sleep(2)
-        
+        time.sleep(2)    
 
     def run(self):
+
+        parse_only_one = True
+
         self.create_url_list()
         #Load base website url and handle cookies
         self.handle_cookies(self.url_base)
@@ -84,13 +89,20 @@ class Scraper:
         #Scrape rest of data from urls generated from target list data
         url_head = self.url_base + self.url_mtg_section + self.url_set_name + "/"
 
-        for c in self.formatted_card_list:
-            final_url = url_head + c      
-            if(debug):
-                print("Scraping: " + final_url)      
-            self.scrape(final_url)
+        if parse_only_one:
+            random_parse = False
+            if random_parse:
+                self.scrape(url_head + random.choice(self.formatted_card_list))
+            else:
+                self.scrape(url_head + self.formatted_card_list[0])
+        else:
+            for c in self.formatted_card_list:
+                final_url = url_head + c      
+                if(debug):
+                    print("Scraping: " + final_url)      
+                self.scrape(final_url)
 
-        pass
+        
 
 if __name__ == "__main__":
     #example url https://www.cardmarket.com/en/Magic/Products/Singles/Kamigawa-Neon-Dynasty/Ancestral-Katana
@@ -101,4 +113,4 @@ if __name__ == "__main__":
 
     scraper = Scraper(target_url, set_name, target_list_filepath, debug)
     scraper.run()
-    pass
+    
