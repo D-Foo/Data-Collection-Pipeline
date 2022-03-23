@@ -9,6 +9,16 @@ class Rarity(Enum):
     RARE = 2
     MYTHIC_RARE = 3
 
+    def cardmarketRarityToEnum(str):
+        switcher = {
+            "Common": 0,
+            "Uncommon" : 1,
+            "Rare" : 2,
+            "Mythic" : 3
+        }
+        return Rarity(switcher(str))
+
+
 @dataclass
 class MTGCardData:
 

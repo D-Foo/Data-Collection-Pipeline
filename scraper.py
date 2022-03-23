@@ -83,21 +83,37 @@ class Scraper:
         #Wait until tabel containing the data we want to scrape is loaded in
         WebDriverWait(self.driver, self.delay).until(EC.presence_of_element_located((By.XPATH, '//dl[@class="labeled row no-gutters mx-auto"]'))) 
 
-        #Get each table description and value
+        #Get each table description and corresponding value
         for dt in self.driver.find_element_by_xpath('//dl[@class="labeled row no-gutters mx-auto"]').find_elements_by_xpath('.//dt'):
             
-            #Switch based on the dt.text case
-
-            #Rarity: Unique
-
-            #Reprints: Unique
-
-            #Printed in : Discard
-
-            #Available items, From, Price Trend, 30/7/1 day(s) average price: Handle as int/float drop € symbole
-            
             dd = dt.find_element_by_xpath('.//following-sibling::dd')
-            print(dt.text + " -> " + dd.text)
+
+            #Rarity
+            if(dt.text == "Rarity"):
+                print("RARITY -> " + dd.find_element_by_xpath('.//span').get_attribute("data-original-title"))
+            #Reprints
+            elif(dt.text == "Reprints"):
+                print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
+                str = dd.find_element_by_xpath('.//a').text
+                str = str[str.find('(') + 1 : str.find(')')]
+                print("STR -> " + str)
+            #Printed in
+            elif(dt.text == "Printed in"):
+                print("Printed in")
+                pass
+            #Availble items
+            elif(dt.text == "Available items"):
+                print(dt.text + " -> " + dd.text)
+            #Prices
+            elif(dt.text == "From" or "Price Trend" or "30 days average price" or "7 days average price" or "1 day average price"):
+                print(dt.text + " -> " + dd.text)
+            else:
+                print("Unexpected input: " + dt.text)
+           
+        #Get Image
+        card_image_url = self.driver.find_element_by_xpath('//img[@class="is-front"]').get_attribute("src")
+        print("Card url: " + card_image_url)            
+            
         #scraped_data.card_name = 1
 
 
