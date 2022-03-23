@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass
 import string
-from uuid import UUID
+from uuid import UUID, uuid4
 
 class Rarity(Enum):
     COMMON = 0
@@ -23,5 +23,5 @@ class MTGCardData:
         average_price_30_day: float
         average_price_7_day: float
         average_price_1_day: float
-        record_uuid: UUID
+        record_uuid: UUID = uuid4
     

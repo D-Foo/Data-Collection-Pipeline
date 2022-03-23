@@ -72,17 +72,46 @@ class Scraper:
             name = name.replace(" // ", '-')  #Replace the " // " substring with a hyphen
             name = name.translate({ord(c):None for c in "',"}) #Remove any apostrophes or commas in the string
             name = name.replace(' ', '-')  #Replace any spaces with hyphens
+            name = name.replace('\n', '')  #Remove \n at end of name
             self.formatted_card_list.append(name)
         
-    def scrape(self, url):
+    def scrape(self, url) -> MTGCardData:
         self.driver.get(url)
         time.sleep(2)    
+        scraped_data = MTGCardData()
 
-    def run(self):
+        #Wait until tabel containing the data we want to scrape is loaded in
+        WebDriverWait(self.driver, self.delay).until(EC.presence_of_element_located((By.XPATH, '//dl[@class="labeled row no-gutters mx-auto"]'))) 
 
+        #Get each table description and value
+        for dt in self.driver.find_element_by_xpath('//dl[@class="labeled row no-gutters mx-auto"]').find_elements_by_xpath('.//dt'):
+            
+            #Switch based on the dt.text case
+
+            #Rarity: Unique
+
+            #Reprints: Unique
+
+            #Printed in : Discard
+
+            #Available items, From, Price Trend, 30/7/1 day(s) average price: Handle as int/float drop € symbole
+            
+            dd = dt.find_element_by_xpath('.//following-sibling::dd')
+            print(dt.text + " -> " + dd.text)
+        #scraped_data.card_name = 1
+
+
+        return scraped_data
+
+
+    def run(self) -> list:
+
+        mtgData = []
+        
         parse_only_one = True
 
         self.create_url_list()
+
         #Load base website url and handle cookies
         self.handle_cookies(self.url_base)
 
@@ -94,13 +123,14 @@ class Scraper:
             if random_parse:
                 self.scrape(url_head + random.choice(self.formatted_card_list))
             else:
-                self.scrape(url_head + self.formatted_card_list[0])
+                mtgData.append(self.scrape(url_head + self.formatted_card_list[247]))
         else:
             for c in self.formatted_card_list:
                 final_url = url_head + c      
                 if(debug):
                     print("Scraping: " + final_url)      
                 self.scrape(final_url)
+        return mtgData
 
         
 
@@ -112,5 +142,5 @@ if __name__ == "__main__":
     debug = True
 
     scraper = Scraper(target_url, set_name, target_list_filepath, debug)
-    scraper.run()
+    mtgData = scraper.run()
     
