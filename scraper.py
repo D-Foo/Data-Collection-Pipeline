@@ -9,6 +9,7 @@ import string
 from mtg_card_data import MTGCardData
 import random
 import json
+import os
 
 class Scraper:
 
@@ -28,10 +29,10 @@ class Scraper:
         self.driver = webdriver.Firefox()
         self.delay = 10
 
-        #Data 
-        database = []
-
-        self.startup()
+        #Data
+        self.save_dir = "raw_data" 
+        self.json_filename = "data.json"
+        self.database = []
         
     
     def startup(self):
@@ -39,6 +40,9 @@ class Scraper:
             print("Startup")
         self.driver.get(self.url_base)
         time.sleep(2) # Wait a couple of seconds, so the website doesn't suspect we're a bot
+
+    def close(self):
+        self.driver.close()
 
     def handle_cookies(self, url):
         if(self.debug):
@@ -77,7 +81,7 @@ class Scraper:
             name = name.replace('\n', '')  #Remove \n at end of name
             self.formatted_card_list.append(name)
         
-    def scrape(self, url) -> MTGCardData:
+    def scrape(self, url):
         self.driver.get(url)
         time.sleep(2)    
         scraped_data = MTGCardData()
@@ -165,16 +169,19 @@ class Scraper:
         #UUID
         scraped_data.dict['uuid'] = str(uuid4())
 
-        #Output
-        if(debug):
-            data_output = json.dumps(scraped_data.dict)
-            print(data_output)
+        self.database.append(scraped_data)
 
-
-        return scraped_data
+    def save(self) -> None:
+        if(not os.path.isdir(self.save_dir)):
+            os.mkdir(self.save_dir)
+        out_file = open(self.save_dir + '/' + self.json_filename, 'w')
+        json.dump(self.database[0].dict, out_file, indent = 2)
+        out_file.close()
 
 
     def run(self) -> list:
+
+        self.startup()
 
         mtgData = []
         
@@ -212,5 +219,7 @@ if __name__ == "__main__":
     debug = True
 
     scraper = Scraper(target_url, set_name, target_list_filepath, debug)
-    mtgData = scraper.run()
+    scraper.run()
+    scraper.save()
+    scraper.close()
     
