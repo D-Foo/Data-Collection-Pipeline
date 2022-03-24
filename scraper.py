@@ -1,3 +1,4 @@
+from uuid import UUID, uuid4
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -7,6 +8,7 @@ import time
 import string
 from mtg_card_data import MTGCardData
 import random
+import json
 
 class Scraper:
 
@@ -27,7 +29,7 @@ class Scraper:
         self.delay = 10
 
         #Data 
-        data = []
+        database = []
 
         self.startup()
         
@@ -90,31 +92,83 @@ class Scraper:
 
             #Rarity
             if(dt.text == "Rarity"):
-                print("RARITY -> " + dd.find_element_by_xpath('.//span').get_attribute("data-original-title"))
+                if(debug):
+                    print("RARITY -> " + dd.find_element_by_xpath('.//span').get_attribute("data-original-title"))
+                scraped_data.dict['rarity'] = dd.find_element_by_xpath('.//span').get_attribute("data-original-title")
+
             #Reprints
             elif(dt.text == "Reprints"):
-                print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
-                str = dd.find_element_by_xpath('.//a').text
-                str = str[str.find('(') + 1 : str.find(')')]
-                print("STR -> " + str)
+                if(debug):
+                    print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
+                number_str = dd.find_element_by_xpath('.//a').text  #Get string of the number between parentheses
+                number_str = number_str[number_str.find('(') + 1 : number_str.find(')')]
+                scraped_data.dict['version_count'] = int(number_str)
+
             #Printed in
             elif(dt.text == "Printed in"):
-                print("Printed in")
-                pass
+                if(debug):
+                    print("Printed in")
+                pass    #Expected input but we won't do anything with it
+
             #Availble items
             elif(dt.text == "Available items"):
-                print(dt.text + " -> " + dd.text)
+                if(debug):
+                    print(dt.text + " -> " + dd.text)
+                scraped_data.dict['available_count'] = int(dd.text)
+
+            #Set Number
+            elif(dt.text == "Number"):
+                if(debug):
+                    print(dt.text + " -> " + dd.text)
+                scraped_data.dict['set_number'] = int(dd.text)
+
+
             #Prices
-            elif(dt.text == "From" or "Price Trend" or "30 days average price" or "7 days average price" or "1 day average price"):
-                print(dt.text + " -> " + dd.text)
+            elif(dt.text == "From" or "Price Trend" or "30-days average price" or "7-days average price" or "1-day average price"):
+                if(debug):
+                    print(dt.text + " -> " + dd.text)
+
+                #Clip € from end of string and convert to floating point 
+                price_str = dd.text
+                price_str = price_str.replace(',', '.')
+                price_str = price_str.replace(' ', '')
+                price_str = price_str.replace('€', '')
+                price = float(price_str)
+
+                if(dt.text == "From"):
+                    scraped_data.dict['lowest_price'] = price
+                elif(dt.text == "Price Trend"):
+                    scraped_data.dict['price_trend'] = price
+                elif(dt.text == "30-days average price"):
+                    scraped_data.dict['average_price_30_day'] = price
+                elif(dt.text == "7-days average price"):
+                    scraped_data.dict['average_price_7_day'] = price
+                else:
+                    scraped_data.dict['average_price_1_day'] = price
+
             else:
                 print("Unexpected input: " + dt.text)
-           
+        
+        #Get Name
+        if(debug):
+            print("NAME -> " + self.driver.find_element_by_xpath('//h1').text)
+        name_string = self.driver.find_element_by_xpath('//h1').text
+        name_string = name_string[0 : name_string.find('\n')]
+        scraped_data.dict['card_name'] = name_string
+
         #Get Image
         card_image_url = self.driver.find_element_by_xpath('//img[@class="is-front"]').get_attribute("src")
-        print("Card url: " + card_image_url)            
-            
-        #scraped_data.card_name = 1
+        if(debug):
+            print("Card url: " + card_image_url)            
+        scraped_data.dict['image_url'] = card_image_url
+        
+        #UUID
+        scraped_data.dict['uuid'] = str(uuid4())
+
+        #Output
+        if(debug):
+            data_output = json.dumps(scraped_data.dict)
+            print(data_output)
 
 
         return scraped_data
