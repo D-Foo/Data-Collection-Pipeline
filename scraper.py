@@ -1,4 +1,6 @@
-from uuid import UUID, uuid4
+from genericpath import exists
+from uuid import uuid4
+from numpy import number
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -10,6 +12,7 @@ from mtg_card_data import MTGCardData
 import random
 import json
 import os
+import requests
 
 class Scraper:
 
@@ -30,8 +33,9 @@ class Scraper:
         self.delay = 10
 
         #Data
-        self.save_dir = "raw_data" 
+        self.root_save_dir = "raw_data" 
         self.json_filename = "data.json"
+        self.image_dir = "images"
         self.database = []
         
     
@@ -85,6 +89,7 @@ class Scraper:
         self.driver.get(url)
         time.sleep(2)    
         scraped_data = MTGCardData()
+        scraped_data.dict['version_count'] = 0
 
         #Wait until tabel containing the data we want to scrape is loaded in
         WebDriverWait(self.driver, self.delay).until(EC.presence_of_element_located((By.XPATH, '//dl[@class="labeled row no-gutters mx-auto"]'))) 
@@ -102,11 +107,16 @@ class Scraper:
 
             #Reprints
             elif(dt.text == "Reprints"):
-                if(debug):
-                    print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
+                version_count = 0
                 number_str = dd.find_element_by_xpath('.//a').text  #Get string of the number between parentheses
-                number_str = number_str[number_str.find('(') + 1 : number_str.find(')')]
-                scraped_data.dict['version_count'] = int(number_str)
+                if(number_str.find('(') == -1):
+                    version_count = 1   #If no number in parenthses found then there is only one reprint of that card on cardmarket
+                else:
+                    if(debug):
+                        print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
+                    number_str = number_str[number_str.find('(') + 1 : number_str.find(')')]
+                    version_count = int(number_str)
+                scraped_data.dict['version_count'] = version_count
 
             #Printed in
             elif(dt.text == "Printed in"):
@@ -172,20 +182,43 @@ class Scraper:
         self.database.append(scraped_data)
 
     def save(self) -> None:
-        if(not os.path.isdir(self.save_dir)):
-            os.mkdir(self.save_dir)
-        out_file = open(self.save_dir + '/' + self.json_filename, 'w')
-        json.dump(self.database[0].dict, out_file, indent = 2)
+        #Create directories if they don't already exist
+        if(not os.path.isdir(self.root_save_dir)):
+            os.mkdir(self.root_save_dir)
+        if(not os.path.isdir(self.root_save_dir + '/' + self.image_dir)):
+            os.mkdir(self.root_save_dir + '/' + self.image_dir)
+        
+        #Save .json
+        out_file = open(self.root_save_dir + '/' + self.json_filename, 'w')
+
+
+        #TODO: UPDATE JSON SAVING TO OPEN AND UPDATE/FILL IN MISSING RECORDS
+        dict_list = []  #List of dictionaries
+        for i in self.database:
+            dict_list.append(i.dict)
+
+        dict_list = sorted(dict_list, key=lambda k: k['set_number'])
+
+        json.dump(dict_list, out_file)
         out_file.close()
+        
+        #Save image if it does not already exists
+        for i in self.database:
+            if(not exists(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg')):        
+                with open(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg', 'wb') as image_out:
+                    img_data = requests.get(i.dict['image_url']).content
+                    image_out.write(img_data)
+        image_out.close()
 
 
     def run(self) -> list:
 
         self.startup()
 
-        mtgData = []
-        
-        parse_only_one = True
+        #Flow Control
+        parse_only_one = False
+        parse_first_x = 3
+        random_parse = False
 
         self.create_url_list()
 
@@ -196,20 +229,23 @@ class Scraper:
         url_head = self.url_base + self.url_mtg_section + self.url_set_name + "/"
 
         if parse_only_one:
-            random_parse = False
             if random_parse:
                 self.scrape(url_head + random.choice(self.formatted_card_list))
             else:
-                mtgData.append(self.scrape(url_head + self.formatted_card_list[247]))
+                self.scrape(url_head + self.formatted_card_list[247])
+        elif parse_first_x:
+            if random_parse:
+                for i in range(parse_first_x):
+                    self.scrape(url_head + random.choice(self.formatted_card_list))
+            else:
+                for i in range(parse_first_x):
+                    self.scrape(url_head + self.formatted_card_list[i])   
         else:
             for c in self.formatted_card_list:
                 final_url = url_head + c      
                 if(debug):
                     print("Scraping: " + final_url)      
-                self.scrape(final_url)
-        return mtgData
-
-        
+                self.scrape(final_url)        
 
 if __name__ == "__main__":
     #example url https://www.cardmarket.com/en/Magic/Products/Singles/Kamigawa-Neon-Dynasty/Ancestral-Katana
@@ -222,4 +258,3 @@ if __name__ == "__main__":
     scraper.run()
     scraper.save()
     scraper.close()
-    
