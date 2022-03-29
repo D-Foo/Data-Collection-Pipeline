@@ -53,3 +53,68 @@ After accepting cookies we can iterate through our url list and access each webp
     self.scrape(final_url)
 ```
 
+
+
+## Scraping data from the website
+
+- Create a dictionary to store data in 
+
+Before we start scraping we need a strcutre to store our data in. For this we project we're going to store our data in dictionaries, a data structure where each piece of data is mapped to a corresponding key, and easily exported to JSON format which is perfect for our needs. Each card in a magic set has a set number which suits as a user friendly unique ID for each set we scrape, a UUID is also added so we have access to a universally unique record ID for each individual card.
+
+```python
+dict = {
+        "card_name": string,
+        "rarity": string,
+        "available_count": int,
+        "version_count": int,
+        "set_number": int, #unique ID
+        "lowest_price": float,
+        "price_trend": float,
+        "average_price_30_day": float,
+        "average_price_7_day": float,
+        "average_price_1_day": float,
+        "image_url" : string,
+        "uuid": string,}
+```
+
+- Getting data from the website
+
+To find the data we need to scrape we make use of XPaths to find the elements on the page containing the data. The name is contained in the &lt;h1> (header) tag and the card image is contained in the &lt;img> tag. 
+
+```python
+#Get Name
+if(debug):
+    print("NAME -> " + self.driver.find_element_by_xpath('//h1').text)
+name_string = self.driver.find_element_by_xpath('//h1').text
+name_string = name_string[0 : name_string.find('\n')]
+scraped_data.dict['card_name'] = name_string
+
+#Get Image
+card_image_url = self.driver.find_element_by_xpath('//img[@class="is-front"]').get_attribute("src")
+if(debug):
+    print("Card url: " + card_image_url)            
+scraped_data.dict['image_url'] = card_image_url
+```
+
+The rest of the data we need is contained in a &lt;dl> (description list), to efficiently scrape it we use a for loop to obtain every &lt;dt> (terms in the list) tag nested inside the dl and it's corresponding &lt;dd> (description) tag, each &lt;dd> tag is handled differently based on the &lt;dt> tag it belongs to.
+
+![mtg_dl_blurred](https://user-images.githubusercontent.com/36233522/160681462-52cf134f-345d-4fde-b0e8-2b8676e6aed0.png)
+
+- Save data and images locally
+
+After scraping all the data we need the card data is exported to JSON format and saved with each card image saved in a separate folder.
+
+```python
+#Save .json
+out_file = open(self.root_save_dir + '/' + self.json_filename, 'w')
+json.dump(dict_list, out_file)
+out_file.close()
+
+#Save image if it does not already exist
+for i in self.database:
+    if(not exists(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg')):        
+        with open(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg', 'wb') as image_out:
+            img_data = requests.get(i.dict['image_url']).content
+            image_out.write(img_data)
+            image_out.close()
+```
