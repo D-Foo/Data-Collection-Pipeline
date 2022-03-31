@@ -15,8 +15,47 @@ import os
 import requests
 
 class Scraper:
+    """
+    Webscraper targeting cardmarket.com
+    
+    Parameters
+    ----------
+    target_url : str
+        URL of the website to scrape from
+    set_url : str
+        MTG set name in url format for cardmarket
+    target_list_filepath : str
+        Filepath of the names of cards to scrape
+    debug : bool
+        Whether or not to enable debugging
 
-    def __init__(self, target_url, set_name, target_list_filepath, debug) -> None:
+    Attributes
+    ----------
+    debug : bool
+        Controls outputting of print statements for debugging
+    url_mtg_section : str
+        Part of the url that leads to the magic section of the cardmarket website
+    url_set_name : str
+        MTG set name in url format for cardmarket
+    target_list_filepath : str
+        Filepath of the names of cards to scrape
+    formatted_card_list : list[str]
+        Contains card urls formatted for cardmarket
+    driver : webdriver
+        Selenium webdriver
+    delay : int
+        Maximum time in seconds to wait for website to load
+    root_save_dir : str
+        Directory to save scraped data to
+    json_filename : str
+        Name of the file to save to in JSON format
+    image_dir : str
+        Directory to save images to
+    database : list[MTGCardData]
+        Contains class to store scraped data
+    """
+    
+    def __init__(self, target_url, set_url, target_list_filepath, debug) -> None:
         
         #Control
         self.debug = debug
@@ -24,7 +63,7 @@ class Scraper:
         #Url
         self.url_base = target_url
         self.url_mtg_section = "/en/Magic/Products/Singles/"
-        self.url_set_name = set_name
+        self.url_set_name = set_url
         self.target_list_filepath = target_list_filepath
         self.formatted_card_list = []
         
@@ -39,19 +78,27 @@ class Scraper:
         self.database = []
         
     
-    def startup(self):
+    def startup(self) -> None:
+        """
+        Opens the browser window and gets the base url       
+        """
         if(self.debug):
             print("Startup")
         self.driver.get(self.url_base)
         time.sleep(2) # Wait a couple of seconds, so the website doesn't suspect we're a bot
 
-    def close(self):
+    def close(self) -> None:
+        """
+        Closes the driver
+        """
         self.driver.close()
 
-    def handle_cookies(self, url):
+    def handle_cookies(self) -> None:
+        """
+        Finds and commands the driver to click on the accept cookies button
+        """
         if(self.debug):
             print("Handle_Cookies")
-
         try: 
             WebDriverWait(self.driver, self.delay).until(EC.presence_of_element_located((By.XPATH, '//div[@id="CookiesConsent"]')))
             accept_cookies_button = self.driver.find_element_by_xpath('//button[@aria-label="Accept All Cookies"]')
@@ -62,7 +109,10 @@ class Scraper:
             print(f"Unexpected {err=}, {type(err)=}")
             raise
 
-    def create_url_list(self):
+    def create_url_list(self) -> None:
+        """
+        Loads the cardlist txt file and generates a list of urls to scrape from
+        """
         if(self.debug):
             print("Create_Url_List")
 
@@ -85,7 +135,15 @@ class Scraper:
             name = name.replace('\n', '')  #Remove \n at end of name
             self.formatted_card_list.append(name)
         
-    def scrape(self, url):
+    def scrape(self, url) -> None:
+        """
+        Scrapes data from the given url
+        
+        Parameters
+        ----------
+        url : str
+            The URL to scrape data from 
+        """
         self.driver.get(url)
         time.sleep(2)    
         scraped_data = MTGCardData()
@@ -164,10 +222,10 @@ class Scraper:
                 print("Unexpected input: " + dt.text)
         
         #Get Name
-        if(debug):
-            print("NAME -> " + self.driver.find_element_by_xpath('//h1').text)
         name_string = self.driver.find_element_by_xpath('//h1').text
         name_string = name_string[0 : name_string.find('\n')]
+        if(debug):
+            print("NAME -> " + name_string)
         scraped_data.dict['card_name'] = name_string
 
         #Get Image
@@ -182,6 +240,9 @@ class Scraper:
         self.database.append(scraped_data)
 
     def save(self) -> None:
+        """
+        Saves data to raw_data.json and images to the images directory
+        """
         #Create directories if they don't already exist
         if(not os.path.isdir(self.root_save_dir)):
             os.mkdir(self.root_save_dir)
@@ -190,7 +251,6 @@ class Scraper:
         
         #Save .json
         out_file = open(self.root_save_dir + '/' + self.json_filename, 'w')
-
 
         #TODO: UPDATE JSON SAVING TO OPEN AND UPDATE/FILL IN MISSING RECORDS
         dict_list = []  #List of dictionaries
@@ -202,17 +262,19 @@ class Scraper:
         json.dump(dict_list, out_file)
         out_file.close()
         
-        #Save image if it does not already exists
+        #Save image if it does not already exist
         for i in self.database:
             if(not exists(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg')):        
                 with open(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg', 'wb') as image_out:
                     img_data = requests.get(i.dict['image_url']).content
                     image_out.write(img_data)
-        image_out.close()
+                    image_out.close()
 
 
-    def run(self) -> list:
-
+    def run(self):
+        """
+        Starts the driver, and scrapes data for each card in cardlist txt      
+        """
         self.startup()
 
         #Flow Control
