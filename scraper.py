@@ -53,6 +53,12 @@ class Scraper:
         Directory to save images to
     database : list[MTGCardData]
         Contains class to store scraped data
+    successfully_handled_cookies : bool 
+        Tracks whether or not the driver handled the cookies prompt
+    get_url_log : list[str]
+        History of webpages that were attempted to visit
+    real_url_log : list[str]
+        History of webpages that were visited by the driver
     """
     
     def __init__(self, target_url, set_url, target_list_filepath, debug) -> None:
@@ -76,24 +82,41 @@ class Scraper:
         self.json_filename = "data.json"
         self.image_dir = "images"
         self.database = []
-        
+
+        #Error Checking
+        self.successfully_handled_cookies = False
+        self.get_url_log = []   
+        self.driver_url_log = []   
+
     
-    def startup(self) -> None:
+    def _geturl(self, url) -> None:
+        """
+        Commands the driver to load the given url, waits for the page to load and logs the desired url and visited url
+        Parameters
+        ----------
+        url : str
+            The URL to load 
+        """
+        self.driver.get(url)
+        self.get_url_log.append(url)
+        time.sleep(2) # Wait a couple of seconds, so the website doesn't suspect we're a bot
+        self.driver_url_log.append(self.driver.current_url)
+
+    def _startup(self) -> None:
         """
         Opens the browser window and gets the base url       
         """
         if(self.debug):
             print("Startup")
-        self.driver.get(self.url_base)
-        time.sleep(2) # Wait a couple of seconds, so the website doesn't suspect we're a bot
+        self._geturl(self.url_base)
 
     def close(self) -> None:
         """
-        Closes the driver
+        Closes all windows and exits the driver
         """
-        self.driver.close()
+        self.driver.quit()
 
-    def handle_cookies(self) -> None:
+    def _handle_cookies(self) -> None:
         """
         Finds and commands the driver to click on the accept cookies button
         """
@@ -108,8 +131,10 @@ class Scraper:
         except BaseException as err:
             print(f"Unexpected {err=}, {type(err)=}")
             raise
+        else:
+            self.successfully_handled_cookies = True
 
-    def create_url_list(self) -> None:
+    def _create_url_list(self) -> None:
         """
         Loads the cardlist txt file and generates a list of urls to scrape from
         """
@@ -135,7 +160,7 @@ class Scraper:
             name = name.replace('\n', '')  #Remove \n at end of name
             self.formatted_card_list.append(name)
         
-    def scrape(self, url) -> None:
+    def _scrape(self, url) -> None:
         """
         Scrapes data from the given url
         
@@ -144,8 +169,7 @@ class Scraper:
         url : str
             The URL to scrape data from 
         """
-        self.driver.get(url)
-        time.sleep(2)    
+        self._geturl(url)
         scraped_data = MTGCardData()
         scraped_data.dict['version_count'] = 0
 
@@ -275,39 +299,39 @@ class Scraper:
         """
         Starts the driver, and scrapes data for each card in cardlist txt      
         """
-        self.startup()
+        self._startup()
 
         #Flow Control
         parse_only_one = False
         parse_first_x = 3
         random_parse = False
 
-        self.create_url_list()
+        self._create_url_list()
 
         #Load base website url and handle cookies
-        self.handle_cookies(self.url_base)
+        self._handle_cookies(self.url_base)
 
         #Scrape rest of data from urls generated from target list data
         url_head = self.url_base + self.url_mtg_section + self.url_set_name + "/"
 
         if parse_only_one:
             if random_parse:
-                self.scrape(url_head + random.choice(self.formatted_card_list))
+                self._scrape(url_head + random.choice(self.formatted_card_list))
             else:
-                self.scrape(url_head + self.formatted_card_list[247])
+                self._scrape(url_head + self.formatted_card_list[247])
         elif parse_first_x:
             if random_parse:
                 for i in range(parse_first_x):
-                    self.scrape(url_head + random.choice(self.formatted_card_list))
+                    self._scrape(url_head + random.choice(self.formatted_card_list))
             else:
                 for i in range(parse_first_x):
-                    self.scrape(url_head + self.formatted_card_list[i])   
+                    self._scrape(url_head + self.formatted_card_list[i])   
         else:
             for c in self.formatted_card_list:
                 final_url = url_head + c      
                 if(debug):
                     print("Scraping: " + final_url)      
-                self.scrape(final_url)        
+                self._scrape(final_url)        
 
 if __name__ == "__main__":
     #example url https://www.cardmarket.com/en/Magic/Products/Singles/Kamigawa-Neon-Dynasty/Ancestral-Katana
@@ -319,4 +343,4 @@ if __name__ == "__main__":
     scraper = Scraper(target_url, set_name, target_list_filepath, debug)
     scraper.run()
     scraper.save()
-    scraper.close()
+    scraper.close
