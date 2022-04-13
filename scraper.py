@@ -8,6 +8,8 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 import time
 import string
+
+import urllib3.exceptions
 from mtg_card_data import MTGCardData
 import random
 import json
@@ -108,13 +110,39 @@ class Scraper:
         """
         if(self.debug):
             print("Startup")
-        self._geturl(self.url_base)
+        self._geturl(self.url_base + '/en')
 
     def close(self) -> None:
         """
         Closes all windows and exits the driver
         """
+        
+        if(self.debug):
+            print('PreQuit ID: ' + self.driver.session_id)
+            print('PreQuit Profile: ' + str(self.driver.profile))
+            print('PreQuit Handle Count: ' + str(len(self.driver.window_handles)))
+            print('PreQuit None:')
+            if self.driver == None:
+                print('Driver None')
+
+
+        self.driver.close()
+        time.sleep(1)
         self.driver.quit()
+        
+        if(self.debug):
+            print('PostQuit None:')
+            if self.driver == None:
+                print('Driver None')
+
+            print('PostQuit ID: ' + self.driver.session_id)
+            try:
+                hasattr(self.driver, 'window_handles')
+            #print('PostQuit Handle Count: ' + str(len(self.driver.window_handles)))
+           
+            except urllib3.exceptions.MaxRetryError:
+                print('Error caught successfully')
+
 
     def _handle_cookies(self) -> None:
         """
@@ -183,7 +211,7 @@ class Scraper:
 
             #Rarity
             if(dt.text == "Rarity"):
-                if(debug):
+                if(self.debug):
                     print("RARITY -> " + dd.find_element_by_xpath('.//span').get_attribute("data-original-title"))
                 scraped_data.dict['rarity'] = dd.find_element_by_xpath('.//span').get_attribute("data-original-title")
 
@@ -194,7 +222,7 @@ class Scraper:
                 if(number_str.find('(') == -1):
                     version_count = 1   #If no number in parenthses found then there is only one reprint of that card on cardmarket
                 else:
-                    if(debug):
+                    if(self.debug):
                         print("REPRINTS -> " + dd.find_element_by_xpath('.//a').text)
                     number_str = number_str[number_str.find('(') + 1 : number_str.find(')')]
                     version_count = int(number_str)
@@ -202,26 +230,26 @@ class Scraper:
 
             #Printed in
             elif(dt.text == "Printed in"):
-                if(debug):
+                if(self.debug):
                     print("Printed in")
                 pass    #Expected input but we won't do anything with it
 
             #Availble items
             elif(dt.text == "Available items"):
-                if(debug):
+                if(self.debug):
                     print(dt.text + " -> " + dd.text)
                 scraped_data.dict['available_count'] = int(dd.text)
 
             #Set Number
             elif(dt.text == "Number"):
-                if(debug):
+                if(self.debug):
                     print(dt.text + " -> " + dd.text)
                 scraped_data.dict['set_number'] = int(dd.text)
 
 
             #Prices
             elif(dt.text == "From" or "Price Trend" or "30-days average price" or "7-days average price" or "1-day average price"):
-                if(debug):
+                if(self.debug):
                     print(dt.text + " -> " + dd.text)
 
                 #Clip € from end of string and convert to floating point 
@@ -248,13 +276,13 @@ class Scraper:
         #Get Name
         name_string = self.driver.find_element_by_xpath('//h1').text
         name_string = name_string[0 : name_string.find('\n')]
-        if(debug):
+        if(self.debug):
             print("NAME -> " + name_string)
         scraped_data.dict['card_name'] = name_string
 
         #Get Image
         card_image_url = self.driver.find_element_by_xpath('//img[@class="is-front"]').get_attribute("src")
-        if(debug):
+        if(self.debug):
             print("Card url: " + card_image_url)            
         scraped_data.dict['image_url'] = card_image_url
         
@@ -303,13 +331,13 @@ class Scraper:
 
         #Flow Control
         parse_only_one = False
-        parse_first_x = 3
+        parse_first_x = 1
         random_parse = False
 
         self._create_url_list()
 
         #Load base website url and handle cookies
-        self._handle_cookies(self.url_base)
+        self._handle_cookies()
 
         #Scrape rest of data from urls generated from target list data
         url_head = self.url_base + self.url_mtg_section + self.url_set_name + "/"
@@ -343,4 +371,4 @@ if __name__ == "__main__":
     scraper = Scraper(target_url, set_name, target_list_filepath, debug)
     scraper.run()
     scraper.save()
-    scraper.close
+    scraper.close()
