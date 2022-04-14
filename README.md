@@ -118,3 +118,24 @@ for i in self.database:
             image_out.write(img_data)
             image_out.close()
 ```
+
+## Testing
+
+To aid in testing the scraper we make use of python's built in unittest library to create a script we can run to test our scraper for us. We can construct a test case by inheriting from unittest.TestCase, by doing so unittest will call each method that beings with "test".
+
+A testing method is created for each public method in the scraper and an additional function is created to check the url logs of the scraper against requested urls to catch any redirections or erroneous urls being passed to the scraper. If an assertion in a test method fails then the test fails and the user is notified.
+
+Example tests
+```python
+def test_run(self) -> None:
+        """
+        Check if a session ID was generated to validate that the driver was created succesfully
+        """
+        self.assertNotEqual(self.running_id, None, 'Driver session not created successfully')   #Make sure the driver session != 'None'
+
+    def test_url_logs(self) -> None:
+        """
+        Check for any discrepancies between the urls the driver was told to request and those that it visited
+        """
+        self.assertListEqual(self.scraper.get_url_log, self.scraper.driver_url_log, 'URL Log discrepancy') #Check the urls the driver accessed are the same as the target urls
+```
