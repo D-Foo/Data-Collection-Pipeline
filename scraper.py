@@ -1,6 +1,8 @@
+from distutils.command.upload import upload
 from genericpath import exists
 from uuid import uuid4
-from numpy import number
+from xmlrpc.client import Boolean
+from numpy import bool_, number
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -16,6 +18,13 @@ import json
 import os
 import requests
 
+import boto3
+from botocore.exceptions import NoCredentialsError
+from botocore.exceptions import ClientError
+
+import pandas as pd
+from sqlalchemy import create_engine
+
 class Scraper:
     """
     Webscraper targeting cardmarket.com
@@ -28,8 +37,17 @@ class Scraper:
         MTG set name in url format for cardmarket
     target_list_filepath : str
         Filepath of the names of cards to scrape
+    to_upload : bool
+        Whether or not to upload after scraping
+    upload_file_name : str
+        The name of the file to upload to s3
+    bucket_name : str
+        Name of the s3 bucket to upload to
+    rds_endpoint : str
+        URL of the endpoint of the RDS instance to upload to 
     debug : bool
         Whether or not to enable debugging
+    
 
     Attributes
     ----------
@@ -63,10 +81,11 @@ class Scraper:
         History of webpages that were visited by the driver
     """
     
-    def __init__(self, target_url, set_url, target_list_filepath, debug) -> None:
+    def __init__(self, target_url, set_url, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug) -> None:
         
         #Control
         self.debug = debug
+        self.to_upload = to_upload
 
         #Url
         self.url_base = target_url
@@ -89,6 +108,12 @@ class Scraper:
         self.successfully_handled_cookies = False
         self.get_url_log = []   
         self.driver_url_log = []   
+
+        #Uploading
+        self.upload_file_name = upload_file_name
+        self.bucket_name = bucket_name
+        self.rds_endpoint = rds_endpoint
+        self.dataframe = pd.DataFrame
 
     
     def _geturl(self, url) -> None:
@@ -323,7 +348,7 @@ class Scraper:
                     image_out.close()
 
 
-    def run(self):
+    def run(self) -> None:
         """
         Starts the driver, and scrapes data for each card in cardlist txt      
         """
@@ -331,7 +356,7 @@ class Scraper:
 
         #Flow Control
         parse_only_one = False
-        parse_first_x = 1
+        parse_first_x = 3
         random_parse = False
 
         self._create_url_list()
@@ -361,14 +386,89 @@ class Scraper:
                     print("Scraping: " + final_url)      
                 self._scrape(final_url)        
 
+    def upload(self) -> None:
+        """
+        Uploads the raw_data folder(zipped) to AWS S3 and creates a dataframe for each record and then uploads to AWS RDS
+        """
+
+        #Create S3 connection
+        self._upload_s3()
+
+        #Create RDS connection
+        self._create_dataframe()
+        self._upload_rds()
+
+    def _upload_s3(self) -> bool:
+        """
+        Upload the raw_data.zip to S3
+        """
+        s3_client = boto3.client('s3')
+        try:
+            response = s3_client.upload_file(self.upload_file_name, self.bucket_name, self.upload_file_name)
+            print("Uploaded to S3 successfully")
+        except FileNotFoundError:
+            if(debug):
+                print("The file was not found")
+            return False
+        except NoCredentialsError:
+            if(debug):
+                print("Credentials not available")
+            return False
+        except ClientError as e:
+            if(debug):
+                print(f"Client Error: {e=}, {type(e)=}")
+            return False
+        return True
+
+
+    def _upload_rds(self) -> bool:
+        """
+        Upload the tabulated data to the RDS instance
+        """
+
+        DATABASE_TYPE = 'postgresql'
+        DBAPI = 'psycopg2'
+        USER = 'postgres'
+        PASSWORD = 'aicore1234'
+        PORT = 5432
+        DATABASE = 'postgres'
+        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.rds_endpoint}:{PORT}/{DATABASE}")
+        engine.connect()
+
+        self.dataframe.to_sql('mtgscraper_dataset', engine, if_exists='replace')
+
+        engine.dispose()
+        pass
+
+    def _create_dataframe(self) -> None:
+        """
+        Create dataframe with pandas
+        """
+        self.dataframe = pd.read_json('raw_data/data.json')
+        if(self.debug):
+            print(self.dataframe.head)
+
+        pass
+
+    
+        
+
 if __name__ == "__main__":
     #example url https://www.cardmarket.com/en/Magic/Products/Singles/Kamigawa-Neon-Dynasty/Ancestral-Katana
     target_url = "https://www.cardmarket.com"
     target_list_filepath = "NEO_cardlist.txt"
     set_name = "Kamigawa-Neon-Dynasty"
     debug = True
+    to_upload = False
+    upload_file_name = "raw_data.zip"
+    bucket_name = "mtgscraperbucket"
+    rds_endpoint = "testaidb.czu22ftu6upt.eu-west-2.rds.amazonaws.com"
+    
 
-    scraper = Scraper(target_url, set_name, target_list_filepath, debug)
-    scraper.run()
-    scraper.save()
-    scraper.close()
+    scraper = Scraper(target_url, set_name, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
+    #scraper.run()
+    #scraper.save()
+    #scraper.close()
+    #scraper.upload()
+    scraper._create_dataframe()
+    scraper._upload_rds()
