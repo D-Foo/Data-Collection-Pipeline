@@ -2,4 +2,7 @@ NEO.json
 geckodriver.log
 __pycache__/
 raw_data/
+raw_data.zip
 .vscode/
+aws_details.txt
+upload.py
