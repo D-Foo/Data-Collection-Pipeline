@@ -16,5 +16,6 @@ class MTGCardData:
         "average_price_7_day": float,
         "average_price_1_day": float,
         "image_url" : string,
+        "image_key" : string,
         "uuid": string,}
     

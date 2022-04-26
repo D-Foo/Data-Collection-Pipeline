@@ -24,6 +24,7 @@ from botocore.exceptions import ClientError
 
 import pandas as pd
 from sqlalchemy import create_engine
+from zipfile import ZipFile
 
 class Scraper:
     """
@@ -35,6 +36,8 @@ class Scraper:
         URL of the website to scrape from
     set_url : str
         MTG set name in url format for cardmarket
+    set_code : str
+        MTG three letter expansion code of the set
     target_list_filepath : str
         Filepath of the names of cards to scrape
     to_upload : bool
@@ -57,6 +60,8 @@ class Scraper:
         Part of the url that leads to the magic section of the cardmarket website
     url_set_name : str
         MTG set name in url format for cardmarket
+    set_code : str
+        MTG thre letter expansion code of a set, used to name data subfolders
     target_list_filepath : str
         Filepath of the names of cards to scrape
     formatted_card_list : list[str]
@@ -79,9 +84,11 @@ class Scraper:
         History of webpages that were attempted to visit
     real_url_log : list[str]
         History of webpages that were visited by the driver
+    zip_filename : str
+        Name of the zip file
     """
     
-    def __init__(self, target_url, set_url, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug) -> None:
+    def __init__(self, target_url, set_url, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug) -> None:
         
         #Control
         self.debug = debug
@@ -103,6 +110,8 @@ class Scraper:
         self.json_filename = "data.json"
         self.image_dir = "images"
         self.database = []
+        self.set_code = set_code
+        self.zip_filename = "raw_data.zip"
 
         #Error Checking
         self.successfully_handled_cookies = False
@@ -310,7 +319,8 @@ class Scraper:
         if(self.debug):
             print("Card url: " + card_image_url)            
         scraped_data.dict['image_url'] = card_image_url
-        
+        scraped_data.dict['image_key'] = f'{self.set_code}_{scraped_data.dict["set_number"]:03d}'
+
         #UUID
         scraped_data.dict['uuid'] = str(uuid4())
 
@@ -323,11 +333,13 @@ class Scraper:
         #Create directories if they don't already exist
         if(not os.path.isdir(self.root_save_dir)):
             os.mkdir(self.root_save_dir)
-        if(not os.path.isdir(self.root_save_dir + '/' + self.image_dir)):
-            os.mkdir(self.root_save_dir + '/' + self.image_dir)
+        if(not os.path.isdir(self.root_save_dir + '/' + self.set_code)):
+            os.mkdir(self.root_save_dir + '/' + self.set_code)
+        if(not os.path.isdir(self.root_save_dir  + '/' + self.set_code + '/' + self.image_dir)):
+            os.mkdir(self.root_save_dir + '/' + self.set_code + '/' + self.image_dir)
         
-        #Save .json
-        out_file = open(self.root_save_dir + '/' + self.json_filename, 'w')
+        #Save .json of all records
+        out_file = open(self.root_save_dir + '/' + self.set_code + '/' + self.json_filename, 'w')
 
         #TODO: UPDATE JSON SAVING TO OPEN AND UPDATE/FILL IN MISSING RECORDS
         dict_list = []  #List of dictionaries
@@ -338,15 +350,28 @@ class Scraper:
 
         json.dump(dict_list, out_file)
         out_file.close()
+
+        #Save .json for individual records 
+        for dict in dict_list:
+            record_file_name = f'{dict["set_number"]:03d}.json' #Create the filename based on the set number with leading zeroes e.g. 001.json
+            out_file = open(self.root_save_dir + '/' + self.set_code + '/' + record_file_name , 'w')
+            json.dump(dict, out_file)
+            out_file.close()
         
         #Save image if it does not already exist
         for i in self.database:
-            if(not exists(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg')):        
-                with open(self.root_save_dir + '/' + self.image_dir + '/' + str(i.dict['set_number']) + '.jpg', 'wb') as image_out:
+            if(not exists(self.root_save_dir + '/' + self.set_code + '/' + self.image_dir + '/' + f'{i.dict["set_number"]:03d}.jpg')):        
+                with open(self.root_save_dir + '/' + self.set_code + '/' + self.image_dir + '/' + f'{i.dict["set_number"]:03d}.jpg', 'wb') as image_out:
                     img_data = requests.get(i.dict['image_url']).content
                     image_out.write(img_data)
                     image_out.close()
 
+        #Create a zip of the raw_data folder
+        with ZipFile(self.zip_filename, 'w') as zip:
+            for path, directories, files in os.walk(self.root_save_dir):
+                for self.zip_filename in files:
+                    file_name = os.path.join(path, self.zip_filename)
+                    zip.write(file_name)
 
     def run(self) -> None:
         """
@@ -404,6 +429,10 @@ class Scraper:
         """
         s3_client = boto3.client('s3')
         try:
+            for root,dirs,files in os.walk(self.root_save_dir):
+                for file in files:
+                    s3_client.upload_file(os.path.join(root,file),self.bucket_name,file)
+
             response = s3_client.upload_file(self.upload_file_name, self.bucket_name, self.upload_file_name)
             print("Uploaded to S3 successfully")
         except FileNotFoundError:
@@ -444,7 +473,7 @@ class Scraper:
         """
         Create dataframe with pandas
         """
-        self.dataframe = pd.read_json('raw_data/data.json')
+        self.dataframe = pd.read_json(self.root_save_dir + '/' + self.set_code + '/' + self.json_filename)
         if(self.debug):
             print(self.dataframe.head)
 
@@ -458,6 +487,7 @@ if __name__ == "__main__":
     target_url = "https://www.cardmarket.com"
     target_list_filepath = "NEO_cardlist.txt"
     set_name = "Kamigawa-Neon-Dynasty"
+    set_code = "NEO"
     debug = True
     to_upload = False
     upload_file_name = "raw_data.zip"
@@ -465,10 +495,10 @@ if __name__ == "__main__":
     rds_endpoint = "testaidb.czu22ftu6upt.eu-west-2.rds.amazonaws.com"
     
 
-    scraper = Scraper(target_url, set_name, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
-    #scraper.run()
-    #scraper.save()
-    #scraper.close()
+    scraper = Scraper(target_url, set_name, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
+    scraper.run()
+    scraper.save()
+    scraper.close()
     #scraper.upload()
-    scraper._create_dataframe()
-    scraper._upload_rds()
+    #scraper._create_dataframe()
+    #scraper._upload_rds()
