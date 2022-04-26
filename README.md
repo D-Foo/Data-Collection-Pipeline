@@ -139,3 +139,6 @@ def test_run(self) -> None:
         """
         self.assertListEqual(self.scraper.get_url_log, self.scraper.driver_url_log, 'URL Log discrepancy') #Check the urls the driver accessed are the same as the target urls
 ```
+## Uploading
+
+The data is uploaded to the cloud and stored with AWS S3 and RDS servers. A dataframe is made for each record by using pandas to convert the dictionaries in memory, which are then uploaded to the RDS server with SQL. The raw data is uploaded to S3 with boto3.
