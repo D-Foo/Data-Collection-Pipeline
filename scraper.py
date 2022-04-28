@@ -2,7 +2,7 @@ from distutils.command.upload import upload
 from genericpath import exists
 from uuid import uuid4
 from xmlrpc.client import Boolean
-from numpy import bool_, number
+from numpy import bool_, equal, number
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -25,6 +25,7 @@ from botocore.exceptions import ClientError
 import pandas as pd
 from sqlalchemy import create_engine
 from zipfile import ZipFile
+import glob
 
 class Scraper:
     """
@@ -206,6 +207,7 @@ class Scraper:
         #load NEO_cardlist.txt
         cardlist_filename = self.target_list_filepath
         card_namelist = []
+        scraped_namelist = []
         try:
             with open(cardlist_filename, 'r') as f:
                 card_namelist = f.readlines()
@@ -213,7 +215,22 @@ class Scraper:
             print("Could not open " + cardlist_filename + " for reading.")
             print(f"Unexpected {err=}, {type(err)=}")   
             raise
-                            
+
+        #Remove previously scraped elements
+        #Open each XXX.json and get card name
+        for filename in glob.glob(os.path.join(self.root_save_dir + '/', '*.json')):
+            if filename != f'{self.root_save_dir}/{self.json_filename}':
+                try:
+                    with open(os.path.join(os.getcwd(), filename), 'r') as f:
+                        scraped_dict = json.load(f)
+                        scraped_namelist.append(scraped_dict['card_name'])
+                except BaseException as err:
+                    print("Could not open " + cardlist_filename + " for reading.")
+                    print(f"Unexpected {err=}, {type(err)=}")   
+                    raise
+        #Get diff of entire set namelist and scraped namelist
+        card_namelist = card_namelist - scraped_namelist
+
         #Convert name to url syntax
         for name in card_namelist:
             name = name.replace(" // ", '-')  #Replace the " // " substring with a hyphen
@@ -454,13 +471,13 @@ class Scraper:
         """
         Upload the tabulated data to the RDS instance
         """
-
-        DATABASE_TYPE = 'postgresql'
-        DBAPI = 'psycopg2'
-        USER = 'postgres'
-        PASSWORD = 'aicore1234'
-        PORT = 5432
-        DATABASE = 'postgres'
+        DATABASE_TYPE = '${env:DATABASE_TYPE}'
+        DBAPI = '${env:DBAPI}'
+        USER = '${env:USER}'
+        PASSWORD = '${env:PASSWORD}'
+        PORT = '${env:PORT}'
+        DATABASE = '${env:DATABASE}'
+      
         engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.rds_endpoint}:{PORT}/{DATABASE}")
         engine.connect()
 

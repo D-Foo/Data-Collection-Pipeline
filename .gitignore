@@ -6,3 +6,4 @@ raw_data.zip
 .vscode/
 aws_details.txt
 upload.py
+.env
