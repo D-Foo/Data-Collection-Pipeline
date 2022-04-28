@@ -218,18 +218,18 @@ class Scraper:
 
         #Remove previously scraped elements
         #Open each XXX.json and get card name
-        for filename in glob.glob(os.path.join(self.root_save_dir + '/', '*.json')):
-            if filename != f'{self.root_save_dir}/{self.json_filename}':
+        for filename in glob.glob(os.path.join(f'{self.root_save_dir}/{self.set_code}/', '*.json')):
+            if filename != f'{self.root_save_dir}/{self.set_code}/{self.json_filename}':
                 try:
                     with open(os.path.join(os.getcwd(), filename), 'r') as f:
                         scraped_dict = json.load(f)
-                        scraped_namelist.append(scraped_dict['card_name'])
+                        scraped_namelist.append(scraped_dict['card_name'] + '\n')
                 except BaseException as err:
                     print("Could not open " + cardlist_filename + " for reading.")
                     print(f"Unexpected {err=}, {type(err)=}")   
                     raise
         #Get diff of entire set namelist and scraped namelist
-        card_namelist = card_namelist - scraped_namelist
+        card_namelist = [x for x in card_namelist if x not in scraped_namelist]
 
         #Convert name to url syntax
         for name in card_namelist:
