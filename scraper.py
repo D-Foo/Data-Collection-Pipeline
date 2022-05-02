@@ -199,7 +199,7 @@ class Scraper:
 
     def _create_url_list(self) -> None:
         """
-        Loads the cardlist txt file and generates a list of urls to scrape from
+        Loads the cardlist txt file and generates a list of urls to scrape from, removing previously scraped elements
         """
         if(self.debug):
             print("Create_Url_List")
@@ -215,6 +215,8 @@ class Scraper:
             print("Could not open " + cardlist_filename + " for reading.")
             print(f"Unexpected {err=}, {type(err)=}")   
             raise
+        if not cardlist_filename[-1].endswith('\n'):
+            card_namelist[-1] += '\n'      
 
         #Remove previously scraped elements
         #Open each XXX.json and get card name
@@ -228,6 +230,7 @@ class Scraper:
                     print("Could not open " + cardlist_filename + " for reading.")
                     print(f"Unexpected {err=}, {type(err)=}")   
                     raise
+
         #Get diff of entire set namelist and scraped namelist
         card_namelist = [x for x in card_namelist if x not in scraped_namelist]
 
@@ -303,11 +306,13 @@ class Scraper:
                 if(self.debug):
                     print(dt.text + " -> " + dd.text)
 
-                #Clip € from end of string and convert to floating point 
+                #Clip €/£ from end of string and convert to floating point 
                 price_str = dd.text
                 price_str = price_str.replace(',', '.')
                 price_str = price_str.replace(' ', '')
                 price_str = price_str.replace('€', '')
+                price_str = price_str.replace('£', '')
+
                 price = float(price_str)
 
                 if(dt.text == "From"):
@@ -398,8 +403,10 @@ class Scraper:
 
         #Flow Control
         parse_only_one = False
-        parse_first_x = 3
+        parse_first_x = 0
         random_parse = False
+        scrape_counter = 0
+        error_list = []
 
         self._create_url_list()
 
@@ -422,11 +429,23 @@ class Scraper:
                 for i in range(parse_first_x):
                     self._scrape(url_head + self.formatted_card_list[i])   
         else:
+            print(f'Scraping {len(self.formatted_card_list)} cards')
             for c in self.formatted_card_list:
+                scrape_counter += 1
                 final_url = url_head + c      
-                if(debug):
-                    print("Scraping: " + final_url)      
-                self._scrape(final_url)        
+                print(f'Scraping: {c} - {final_url}')   
+                if(scrape_counter % 10 == 0):
+                    print(f'{scrape_counter}/{len(self.formatted_card_list)}')
+                try:
+                    self._scrape(final_url)        
+                except BaseException as err:
+                    err_message = f'Could not scrape {c}): \nUrl: {final_url}\nError: {err}\n'
+                    print(err_message)
+                    error_list.append(err_message)
+        
+        print('Failed to scrape:')
+        for err_message in error_list:
+            print(err_message)
 
     def upload(self) -> None:
         """
@@ -505,7 +524,7 @@ if __name__ == "__main__":
     target_list_filepath = "NEO_cardlist.txt"
     set_name = "Kamigawa-Neon-Dynasty"
     set_code = "NEO"
-    debug = True
+    debug = False
     to_upload = False
     upload_file_name = "raw_data.zip"
     bucket_name = "mtgscraperbucket"
