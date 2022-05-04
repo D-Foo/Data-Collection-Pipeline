@@ -4,6 +4,12 @@ import hypothesis
 import os
 import urllib3.exceptions
 import json
+from sqlalchemy import create_engine
+from sqlalchemy import inspect
+import boto3
+from botocore.exceptions import NoCredentialsError
+from botocore.exceptions import ClientError
+
 
 def parse_json(filename):
         try: 
@@ -35,8 +41,15 @@ class ScraperTestCase(unittest.TestCase):
         target_url = "https://www.cardmarket.com"
         target_list_filepath = "NEO_cardlist.txt"
         set_name = "Kamigawa-Neon-Dynasty"
+        set_code = "NEO"
         debug = True
-        self.scraper = scraper.Scraper(target_url, set_name, target_list_filepath, debug)
+        to_upload = False
+        upload_file_name = "raw_data.zip"
+        bucket_name = "mtgscraperbucket"
+        rds_endpoint = "testaidb.czu22ftu6upt.eu-west-2.rds.amazonaws.com"
+    
+
+        self.scraper = scraper.Scraper(target_url, set_name, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
         self.scraper.run()
         self.running_id = self.scraper.driver.session_id
         self.scraper.save()
@@ -68,25 +81,65 @@ class ScraperTestCase(unittest.TestCase):
 
     def test_save(self) -> None:
         """
-        Check that the json file and images directory exist and validate the the .json file can be opened and parsed correctly
+        Check that the json and image directories exist and validate that the .json files can be opened and parsed correctly
         """
-        json_path = self.scraper.root_save_dir + '/' + self.scraper.json_filename
-        self.assertTrue(os.path.isfile(json_path), json_path + ' (data .json) not found')  #Check data json
-        #Open file and make sure it loads correctly 
-        scraper_json = parse_json(json_path)
-        self.assertIsNotNone(scraper_json, json_path + ' (data .json) is not a valid .json file')
+        #Open json files and make sure it loads correctly 
+        for path, directories, files in os.walk(self.scraper.root_save_dir + self.scraper.set_code):
+                for file in files:
+                    if(file.endswith('.json')):
+                        scraper_json = parse_json(file)
+                        self.assertIsNotNone(scraper_json, file + 'is not a valid .json file')
 
         #Could be expanded to check specific entries/parts of the json
-
-        image_path = self.scraper.root_save_dir + '/' + self.scraper.image_dir
+        image_path = self.scraper.root_save_dir + '/' + self.scraper.set_code + '/' + self.scraper.image_dir
         self.assertTrue(os.path.isdir(image_path), image_path + '(image folder) not found') #Check image dir was made
         #Could be expanded to check specific .jpgs exist
+
+        #Check zip
+        zip_path = self.scraper.zip_filename
+        self.assertTrue(os.path.isfile(zip_path), zip_path + ' (data .zip) not found')  #Check zip
 
     def test_close(self) -> None:
         """
         Attempting to access scraper attributes after calling .quit() raises an exception which we can catch and use to check if quit() was called succesfully
         """
         self.assertTrue(self.scraper_quit_except, 'Driver session not closed successfully')   #Make sure the driver session == 'None'
+        pass
+
+    def test_upload(self) -> None:
+        """
+        Connect to the S3 and RDS servers and verify that files/dataframes exist there
+        """
+        #S3
+        s3 = boto3.resource('s3')
+
+        try:
+            s3.Object(self.scraper.bucket_name, self.scraper.zip_filename).load()     
+        except ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                #File does not exist
+                self.fail('Error 404: File does not exist')
+            else:
+                self.fail(f'Client Error: {e=}, {type(e)=}')
+        except NoCredentialsError:
+            self.fail('Incorrect Credentials for S3')
+
+
+        #RDS
+        DATABASE_TYPE = os.environ.get('DATABASE_TYPE')
+        DBAPI = os.environ.get('DBAPI')
+        USER = os.environ.get('USER')
+        PASSWORD = os.environ.get('PASSWORD')
+        PORT = os.environ.get('PORT')
+        DATABASE = os.environ.get('DATABASE')
+
+        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.scraper.rds_endpoint}:{PORT}/{DATABASE}")
+        engine.connect()
+
+        insp = inspect(engine)
+        self.assertTrue(insp.has_table('mtgscraper_dataset'))
+        engine.dispose()
+
         pass
 
 if __name__ == '__main__':

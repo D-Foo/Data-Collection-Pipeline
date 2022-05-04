@@ -215,7 +215,7 @@ class Scraper:
             print("Could not open " + cardlist_filename + " for reading.")
             print(f"Unexpected {err=}, {type(err)=}")   
             raise
-        if not cardlist_filename[-1].endswith('\n'):
+        if not card_namelist[-1].endswith('\n'):
             card_namelist[-1] += '\n'      
 
         #Remove previously scraped elements
@@ -391,8 +391,8 @@ class Scraper:
         #Create a zip of the raw_data folder
         with ZipFile(self.zip_filename, 'w') as zip:
             for path, directories, files in os.walk(self.root_save_dir):
-                for self.zip_filename in files:
-                    file_name = os.path.join(path, self.zip_filename)
+                for file in files:
+                    file_name = os.path.join(path, file)
                     zip.write(file_name)
 
     def run(self) -> None:
@@ -490,17 +490,20 @@ class Scraper:
         """
         Upload the tabulated data to the RDS instance
         """
-        DATABASE_TYPE = '${env:DATABASE_TYPE}'
-        DBAPI = '${env:DBAPI}'
-        USER = '${env:USER}'
-        PASSWORD = '${env:PASSWORD}'
-        PORT = '${env:PORT}'
-        DATABASE = '${env:DATABASE}'
-      
+        DATABASE_TYPE = os.environ.get('DATABASE_TYPE')
+        DBAPI = os.environ.get('DBAPI')
+        USER = os.environ.get('USER')
+        PASSWORD = os.environ.get('PASSWORD')
+        PORT = os.environ.get('PORT')
+        #PORT = "5432"
+        DATABASE = os.environ.get('DATABASE')
+
+       
+
         engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.rds_endpoint}:{PORT}/{DATABASE}")
         engine.connect()
 
-        self.dataframe.to_sql('mtgscraper_dataset', engine, if_exists='replace')
+        self.dataframe.to_sql('mtgscraper_dataset', engine, if_exists='append')
 
         engine.dispose()
         pass
@@ -532,9 +535,9 @@ if __name__ == "__main__":
     
 
     scraper = Scraper(target_url, set_name, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
-    scraper.run()
-    scraper.save()
-    scraper.close()
+    #scraper.run()
+    #scraper.save()
+    #scraper.close()
     #scraper.upload()
     #scraper._create_dataframe()
-    #scraper._upload_rds()
+    scraper._upload_rds()

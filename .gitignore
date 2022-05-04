@@ -6,4 +6,6 @@ raw_data.zip
 .vscode/
 aws_details.txt
 upload.py
-.env
+*.env
+NEO_cardlist.txt
+NEO_cardlist.txt.bak
