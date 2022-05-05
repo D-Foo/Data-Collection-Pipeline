@@ -39,6 +39,8 @@ class Scraper:
         MTG set name in url format for cardmarket
     set_code : str
         MTG three letter expansion code of the set
+    local_target_list : bool
+        Whether or not to use a local cardlist.txt or check for missing cards serverside to scrape
     target_list_filepath : str
         Filepath of the names of cards to scrape
     to_upload : bool
@@ -65,6 +67,8 @@ class Scraper:
         MTG thre letter expansion code of a set, used to name data subfolders
     target_list_filepath : str
         Filepath of the names of cards to scrape
+    local_target_list : bool
+        Whether or not to use a local cardlist.txt or check for missing cards serverside to scrape
     formatted_card_list : list[str]
         Contains card urls formatted for cardmarket
     driver : webdriver
@@ -89,11 +93,12 @@ class Scraper:
         Name of the zip file
     """
     
-    def __init__(self, target_url, set_url, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug) -> None:
+    def __init__(self, target_url, set_url, set_code, local_target_list, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug) -> None:
         
         #Control
         self.debug = debug
         self.to_upload = to_upload
+        self.local_target_list = local_target_list
 
         #Url
         self.url_base = target_url
@@ -124,6 +129,14 @@ class Scraper:
         self.bucket_name = bucket_name
         self.rds_endpoint = rds_endpoint
         self.dataframe = pd.DataFrame
+        
+        DATABASE_TYPE = os.environ.get('DATABASE_TYPE')
+        DBAPI = os.environ.get('DBAPI')
+        USER = os.environ.get('USER')
+        PASSWORD = os.environ.get('PASSWORD')
+        PORT = os.environ.get('PORT')
+        DATABASE = os.environ.get('DATABASE')
+        self.database_access = f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.rds_endpoint}:{PORT}/{DATABASE}"
 
     
     def _geturl(self, url) -> None:
@@ -219,17 +232,30 @@ class Scraper:
             card_namelist[-1] += '\n'      
 
         #Remove previously scraped elements
-        #Open each XXX.json and get card name
-        for filename in glob.glob(os.path.join(f'{self.root_save_dir}/{self.set_code}/', '*.json')):
-            if filename != f'{self.root_save_dir}/{self.set_code}/{self.json_filename}':
-                try:
-                    with open(os.path.join(os.getcwd(), filename), 'r') as f:
-                        scraped_dict = json.load(f)
-                        scraped_namelist.append(scraped_dict['card_name'] + '\n')
-                except BaseException as err:
-                    print("Could not open " + cardlist_filename + " for reading.")
-                    print(f"Unexpected {err=}, {type(err)=}")   
-                    raise
+        if(self.local_target_list):
+            #Open each XXX.json and get card name
+            for filename in glob.glob(os.path.join(f'{self.root_save_dir}/{self.set_code}/', '*.json')):
+                if filename != f'{self.root_save_dir}/{self.set_code}/{self.json_filename}':
+                    try:
+                        with open(os.path.join(os.getcwd(), filename), 'r') as f:
+                            scraped_dict = json.load(f)
+                            scraped_namelist.append(scraped_dict['card_name'] + '\n')
+                    except BaseException as err:
+                        print("Could not open " + cardlist_filename + " for reading.")
+                        print(f"Unexpected {err=}, {type(err)=}")   
+                        raise
+        else:
+            #Connect to RDS and pull names of previously scraped cards
+            try:
+                engine = create_engine(self.database_access)
+                engine.connect()
+                server_dataframe = pd.read_sql_query('SELECT card_name from public.mtgscraper_dataset', engine)
+                scraped_namelist = server_dataframe['card_name'].tolist()
+                engine.dispose()
+            except BaseException as err:
+                        print("Could not read mtgscraper_dataset")
+                        print(f"Unexpected {err=}, {type(err)=}")   
+                        raise
 
         #Get diff of entire set namelist and scraped namelist
         card_namelist = [x for x in card_namelist if x not in scraped_namelist]
@@ -490,19 +516,10 @@ class Scraper:
         """
         Upload the tabulated data to the RDS instance
         """
-        DATABASE_TYPE = os.environ.get('DATABASE_TYPE')
-        DBAPI = os.environ.get('DBAPI')
-        USER = os.environ.get('USER')
-        PASSWORD = os.environ.get('PASSWORD')
-        PORT = os.environ.get('PORT')
-        #PORT = "5432"
-        DATABASE = os.environ.get('DATABASE')
+        
 
-       
-
-        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{self.rds_endpoint}:{PORT}/{DATABASE}")
+        engine = create_engine(self.database_access)
         engine.connect()
-
         self.dataframe.to_sql('mtgscraper_dataset', engine, if_exists='append')
 
         engine.dispose()
@@ -532,12 +549,13 @@ if __name__ == "__main__":
     upload_file_name = "raw_data.zip"
     bucket_name = "mtgscraperbucket"
     rds_endpoint = "testaidb.czu22ftu6upt.eu-west-2.rds.amazonaws.com"
+    local_target_list = False
     
 
-    scraper = Scraper(target_url, set_name, set_code, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
-    #scraper.run()
+    scraper = Scraper(target_url, set_name, set_code, local_target_list, target_list_filepath, to_upload, upload_file_name, bucket_name, rds_endpoint, debug)
+    scraper.run()
     #scraper.save()
     #scraper.close()
     #scraper.upload()
     #scraper._create_dataframe()
-    scraper._upload_rds()
+    #scraper._upload_rds()
