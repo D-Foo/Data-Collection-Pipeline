@@ -142,3 +142,22 @@ def test_run(self) -> None:
 ## Uploading
 
 The data is uploaded to the cloud and stored with AWS S3 and RDS servers. A dataframe is made for each record by using pandas to convert the dictionaries in memory, which are then uploaded to the RDS server with SQL. The raw data is uploaded to S3 with boto3.
+
+## Docker
+
+Docker is used to containerise the application so it can be run scalably in the cloud
+
+Changes are made to the code to allow the browser to run in "headless" mode as there is no display for the application to use when ran in a container.
+Container
+
+## Running in the cloud
+
+An AWS EC2 instance is ran using an ubuntu image. Docker is installed on the machine and used to pull the containerised application.
+
+To monitor the performance of docker and the EC2 instance a prometheus container is installed using docker along with a node exporter container. An endpoint is created which is accessed using grafana to pull and display metrics.
+
+## Automation
+
+A github workflow is created to automate containerising the application with docker. An is created so that on a push to main branch the application is automatically containerised and the container on dockerhub is updated
+
+To automate the EC2 instance cronjobs are created that kill the previous container and pull and run the latest one from dockerhub everyday.
